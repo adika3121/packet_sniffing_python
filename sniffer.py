@@ -7,6 +7,10 @@ import sys
 # from wx import xrc
 
 # This will suppress all messages that have a lower level of seriousness than error messages, while running or loading Scapy
+from pip._vendor import ipaddress
+from scapy.layers.dns import DNS
+from scapy.layers.inet import IP, ICMP
+from scapy.layers.inet6 import IPv6
 from scapy.layers.l2 import ARP
 
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
@@ -14,7 +18,6 @@ logging.getLogger("scapy.interactive").setLevel(logging.ERROR)
 logging.getLogger("scapy.loading").setLevel(logging.ERROR)
 
 ########################
-
 
 
 #############################
@@ -29,7 +32,8 @@ except ImportError:
 print("\n! Make sure to run this program as ROOT !\n")
 
 # Asking the user for some parameters: interface on which to sniff, the number of packets to sniff, the time interval to sniff, the protocol
-
+# list_iface = get_windows_if_list()
+# print(list_iface)
 # Asking the user for input - the interface on which to run the sniffer
 net_iface = input("* Enter the interface on which to run the sniffer (e.g. 'enp0s8'): ")
 
@@ -38,6 +42,7 @@ net_iface = input("* Enter the interface on which to run the sniffer (e.g. 'enp0
 Wikipedia: In computer networking, promiscuous mode or "promisc mode"[1] is a mode for a wired network interface controller (NIC) or wireless network interface controller (WNIC) that causes the controller to pass all traffic it receives to the central processing unit (CPU) rather than passing only the frames that the controller is intended to receive.
 This mode is normally used for packet sniffing that takes place on a router or on a computer connected to a hub.
 '''
+
 try:
     subprocess.call(["ifconfig", net_iface, "promisc"], stdout=None, stderr=None, shell=False)
 
@@ -47,9 +52,6 @@ except:
 else:
     # Executed if the try clause does not raise an exception
     print("\nInterface %s was set to PROMISC mode.\n" % net_iface)
-
-
-
 
 #### ini arp-nya
 # pkts = sniff(filter="arp", count=10)
@@ -91,6 +93,7 @@ file_name = input("* Please give a name to the log file: ")
 # Creating the text file (if it doesn't exist) for packet logging and/or opening it for appending
 sniffer_log = open(file_name, "a")
 
+
 # def protocol_name(num):
 #     if num
 
@@ -102,7 +105,7 @@ def protocol_name(proto):
     elif proto == "17":
         return "UDP"
     else:
-        return "Id "+proto
+        return "Id " + proto
 
 
 # This is the function that will be called for each captured packet
@@ -116,25 +119,46 @@ def packet_log(packet):
     if proto_sniff == "0":
         protokol = protocol_name(str(packet[0].proto))
         # Writing the data to the log file
-        print("Time: " + str(now) + " Protocol: "+ protokol + " SMAC: " + packet[0].src + " DMAC: " + packet[0].dst,
+        print("Time: " + str(now) + " Protocol: " + protokol + " SMAC: " + packet[0].src + " DMAC: " + packet[0].dst,
               file=sniffer_log)
+
+    elif proto_sniff == "port 53":
+        # if packet.haslayer(IPv6) and packet.haslayer(DNS) and packet.getlayer(DNS).qr ==0:
+        #     ip_src = packet[IPv6].src
+        #     ip_dst = packet[IPv6].dst
+        #     encoding = "utf-8"
+        #     print(ip_src + " -> " + ip_dst + " : ( " + packet.getlayer(DNS).qd.qname + " )")
+        if IP in packet:
+            ip_src = packet[IP].src
+            ip_dst = packet[IP].dst
+            if packet.haslayer(DNS) and packet.getlayer(DNS).qr == 0:
+                print(str(ip_src) + " -> " + str(ip_dst) + " : ( " + str(packet.getlayer(DNS).qd.qname) + " )",file=sniffer_log)
 
     elif proto_sniff == "arp":
         if packet[ARP].op == 1:
-            print("Waktu: "+ str(now) + " IP "+ str(packet[ARP].psrc)+" bertanya siapa pemilik perangkat dengan IP "+ str(packet[ARP].pdst), file=sniffer_log)
-        elif packet[ARP].op ==2:
-            print("Waktu: "+str(now)+ " IP "+ str(packet[ARP].psrc)+ " merupakan pemilik dari perangkat "+str(packet[ARP].hwsrc), file=sniffer_log)
+            print("Waktu: " + str(now) + " IP " + str(
+                packet[ARP].psrc) + " bertanya siapa pemilik perangkat dengan IP " + str(packet[ARP].pdst),
+                  file=sniffer_log)
+        elif packet[ARP].op == 2:
+            print("Waktu: " + str(now) + " IP " + str(packet[ARP].psrc) + " merupakan pemilik dari perangkat " + str(
+                packet[ARP].hwsrc), file=sniffer_log)
 
-    elif (proto_sniff == "bootp") or (proto_sniff == "icmp"):
+    elif proto_sniff=="icmp":
+        if packet[ICMP].type == 8:
+            print("Waktu: "+ str(now)+ "IP: "+ str(packet[IP].src)+" melakukan request ke IP: "+ str(packet[IP].dst),file=sniffer_log)
+        elif packet[ICMP].type == 0:
+            print("Waktu: "+ str(now)+ "IP: "+ str(packet[IP].src)+" melakukan reply ke IP: "+ str(packet[IP].dst),file=sniffer_log)
+
+    elif proto_sniff == "bootp":
         # Writing the data to the log file
         protokol = str(packet[0].proto)
-        print("Time: " + str(now) + " Protocol: " + str(packet[0].proto) + " SMAC: " + packet[0].src + " DMAC: " + packet[
+        print(
+            "Time: " + str(now) + " Protocol: " + str(packet[0].proto) + " SMAC: " + packet[0].src + " DMAC: " + packet[
                 0].dst, file=sniffer_log)
 
 
 # Printing an informational message to the screen
 print("\n* Starting the capture...")
-
 
 # Running the sniffing process (with or without a filter)
 if proto_sniff == "0":
@@ -143,7 +167,7 @@ if proto_sniff == "0":
 # elif proto_sniff == "arp":
 #     sniff(iface=net_iface, filter=proto_sniff, count=int(pkt_to_sniff), timeout=int(time_to_sniff), prn=packet_log)
 
-elif (proto_sniff == "arp") or (proto_sniff == "bootp") or (proto_sniff == "icmp"):
+elif (proto_sniff == "arp") or (proto_sniff == "bootp") or (proto_sniff == "icmp") or (proto_sniff == "port 53"):
     sniff(iface=net_iface, filter=proto_sniff, count=int(pkt_to_sniff), timeout=int(time_to_sniff), prn=packet_log)
 
 else:
